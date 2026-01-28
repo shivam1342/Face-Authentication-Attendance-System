@@ -3,3 +3,5 @@ opencv-python
 numpy
 scipy
 mediapipe
+# face_recognition  # Requires Visual C++ - using MediaPipe instead
+# insightface       # Requires Visual C++ - using MediaPipe instead
