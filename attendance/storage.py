@@ -175,47 +175,197 @@ class AttendanceLogger:
         with open(self.log_file, 'w') as f:
             json.dump(self.logs, f, indent=2)
     
-    def log_attendance(self, name, face_id):
+    def punch_in(self, name, face_id):
         """
-        Log attendance entry.
+        Log punch-in (arrival).
         
         Args:
             name (str): Person's name
             face_id (int): Face ID
             
         Returns:
-            dict: Log entry
+            dict: Result with success status and message
         """
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Check if already punched in today
+        status = self.get_status_today(name)
+        if status == 'in':
+            return {
+                'success': False,
+                'message': f'{name} already punched in today',
+                'type': 'duplicate'
+            }
+        elif status == 'out':
+            return {
+                'success': False,
+                'message': f'{name} already completed attendance (punched out)',
+                'type': 'already_completed'
+            }
+        
         entry = {
             'name': name,
-            'face_id': face_id,
+            'face_id': int(face_id),  # Convert numpy int64 to Python int
+            'type': 'punch_in',
             'timestamp': datetime.now().isoformat(),
-            'date': datetime.now().strftime('%Y-%m-%d'),
+            'date': today,
             'time': datetime.now().strftime('%H:%M:%S')
         }
         
         self.logs.append(entry)
         self._save_logs()
         
-        return entry
+        return {
+            'success': True,
+            'message': f'✓ {name} punched in at {entry["time"]}',
+            'entry': entry
+        }
+    
+    def punch_out(self, name, face_id):
+        """
+        Log punch-out (departure).
+        
+        Args:
+            name (str): Person's name
+            face_id (int): Face ID
+            
+        Returns:
+            dict: Result with success status and message
+        """
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Check if punched in today
+        status = self.get_status_today(name)
+        if status is None:
+            return {
+                'success': False,
+                'message': f'{name} has not punched in yet',
+                'type': 'not_punched_in'
+            }
+        elif status == 'out':
+            return {
+                'success': False,
+                'message': f'{name} already punched out today',
+                'type': 'duplicate'
+            }
+        
+        # Get punch-in time for duration calculation
+        punch_in_entry = self._get_last_punch_in_today(name)
+        
+        entry = {
+            'name': name,
+            'face_id': int(face_id),  # Convert numpy int64 to Python int
+            'type': 'punch_out',
+            'timestamp': datetime.now().isoformat(),
+            'date': today,
+            'time': datetime.now().strftime('%H:%M:%S')
+        }
+        
+        # Calculate duration
+        if punch_in_entry:
+            in_time = datetime.fromisoformat(punch_in_entry['timestamp'])
+            out_time = datetime.now()
+            duration = out_time - in_time
+            
+            hours = duration.total_seconds() / 3600
+            entry['duration_hours'] = round(hours, 2)
+            entry['duration_str'] = str(duration).split('.')[0]  # HH:MM:SS format
+        
+        self.logs.append(entry)
+        self._save_logs()
+        
+        message = f'✓ {name} punched out at {entry["time"]}'
+        if 'duration_str' in entry:
+            message += f' (Duration: {entry["duration_str"]})'
+        
+        return {
+            'success': True,
+            'message': message,
+            'entry': entry
+        }
+    
+    def get_status_today(self, name):
+        """
+        Get current punch status for a person today.
+        
+        Args:
+            name (str): Person's name
+            
+        Returns:
+            str or None: 'in' if punched in, 'out' if punched out, None if no activity
+        """
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        # Find the last entry for this person today
+        last_entry = None
+        for log in reversed(self.logs):
+            if log.get('name') == name and log.get('date') == today:
+                last_entry = log
+                break
+        
+        if last_entry is None:
+            return None
+        
+        if last_entry.get('type') == 'punch_in':
+            return 'in'
+        elif last_entry.get('type') == 'punch_out':
+            return 'out'
+        
+        return None
+    
+    def _get_last_punch_in_today(self, name):
+        """Get the last punch-in entry for a person today."""
+        today = datetime.now().strftime('%Y-%m-%d')
+        
+        for log in reversed(self.logs):
+            if (log.get('name') == name and 
+                log.get('date') == today and 
+                log.get('type') == 'punch_in'):
+                return log
+        
+        return None
     
     def get_today_logs(self):
         """Get today's attendance logs."""
         today = datetime.now().strftime('%Y-%m-%d')
         return [log for log in self.logs if log.get('date') == today]
     
-    def has_logged_today(self, name):
+    def get_today_summary(self):
         """
-        Check if person has already logged attendance today.
+        Get summary of today's attendance with punch-in/out status.
         
-        Args:
-            name (str): Person's name
-            
         Returns:
-            bool: True if already logged
+            list: List of dicts with name, status, punch_in_time, punch_out_time, duration
         """
         today = datetime.now().strftime('%Y-%m-%d')
-        for log in self.logs:
-            if log.get('name') == name and log.get('date') == today:
-                return True
-        return False
+        today_logs = self.get_today_logs()
+        
+        # Group by person
+        people = {}
+        for log in today_logs:
+            name = log['name']
+            if name not in people:
+                people[name] = {
+                    'name': name,
+                    'punch_in': None,
+                    'punch_out': None,
+                    'status': None
+                }
+            
+            if log.get('type') == 'punch_in':
+                people[name]['punch_in'] = log['time']
+            elif log.get('type') == 'punch_out':
+                people[name]['punch_out'] = log['time']
+                if 'duration_str' in log:
+                    people[name]['duration'] = log['duration_str']
+        
+        # Set status
+        for name, data in people.items():
+            if data['punch_in'] and data['punch_out']:
+                data['status'] = 'Completed'
+            elif data['punch_in']:
+                data['status'] = 'Checked In'
+            else:
+                data['status'] = 'Unknown'
+        
+        return list(people.values())

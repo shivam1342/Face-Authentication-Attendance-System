@@ -27,6 +27,22 @@ class FaceDetector:
         if self.face_cascade.empty():
             raise RuntimeError("Failed to load face detection model")
     
+    def preprocess_frame(self, frame):
+        """
+        Preprocess frame with lighting normalization.
+        
+        Args:
+            frame (numpy.ndarray): BGR image frame
+            
+        Returns:
+            numpy.ndarray: Grayscale preprocessed frame
+        """
+        # Convert to grayscale
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Apply histogram equalization for better lighting normalization
+        equalized = cv2.equalizeHist(gray)
+        return equalized
+    
     def detect(self, frame):
         """
         Detect faces in frame.
@@ -39,8 +55,8 @@ class FaceDetector:
                 - bbox: (x, y, w, h) bounding box
                 - confidence: detection confidence score
         """
-        # Convert to grayscale for detection
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        # Apply preprocessing for better detection in varying lighting
+        gray = self.preprocess_frame(frame)
         
         # Detect faces
         detected_faces = self.face_cascade.detectMultiScale(

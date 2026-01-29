@@ -1,73 +1,49 @@
 """
 Face Authentication Attendance System
-Main entry point - Start here
+Main application with:
+- Multi-sample face registration (7 frames averaged)
+- Face recognition with matching
+- Liveness detection (blink verification)
+- Punch-in/punch-out attendance tracking
 
-Development Flow (Incremental Testing):
-========================================
-
-Step 1: Test Camera [CURRENT]
-- Open webcam
-- Display live feed
-- Press 'q' to quit
-→ TEST: python app.py
-
-Step 2: Add Face Detection
-- Detect faces in frame
-- Draw rectangles around faces
-→ TEST: python app.py
-
-Step 3: Add Face Encoding
-- Extract face embeddings
-- Display encoding info
-→ TEST: python app.py
-
-Step 4: Add Registration Mode
-- Press 'r' to register face
-- Enter name via console
-- Save face encoding
-→ TEST: python app.py
-
-Step 5: Add Recognition Mode
-- Match detected faces
-- Display names on screen
-- Show confidence scores
-→ TEST: python app.py
-
-Step 6: Add Liveness Detection
-- Add anti-spoofing
-- Validate real face
-→ TEST: python app.py
-
-Step 7: Add Attendance Logging
-- Log attendance on recognition
-- Prevent duplicate entries
-- Save to JSON
-→ TEST: python app.py
-
-Step 8: Add UI Polish
-- Better display
-- Status messages
-- Instructions on screen
-→ TEST: python app.py
+Controls:
+- 'r': Register new face
+- 'i': Punch-In (recognition + liveness check)
+- 'o': Punch-Out (recognition only)
+- 's': Show today's attendance summary
+- 'l': List registered faces
+- 'q': Quit
 """
 
 import cv2
+import numpy as np
+import time
 from camera.camera import Camera
 from face.detector import FaceDetector
 from face.encoder import FaceEncoder
-from attendance.storage import FaceStorage
+from face.matcher import FaceMatcher
+from attendance.storage import FaceStorage, AttendanceLogger
+from attendance.attendance import AttendanceManager
+from spoof.liveness import LivenessDetector
 
 
 def main():
     """Main application entry point."""
-    print("=" * 50)
+    print("=" * 70)
     print("Face Authentication Attendance System")
-    print("=" * 50)
-    print("\nStep 3: Face Registration")
-    print("Instructions:")
-    print("  - Press 'r' to REGISTER a new face")
-    print("  - Press 'l' to LIST registered faces")
-    print("  - Press 'q' to quit")
+    print("=" * 70)
+    print("\nFeatures:")
+    print("  ✓ Multi-sample registration (7 frames averaged)")
+    print("  ✓ Lighting normalization")
+    print("  ✓ Liveness detection (blink verification)")
+    print("  ✓ Punch-in/Punch-out tracking")
+    print("\nControls:")
+    print("  'r' - Register new face")
+    print("  'i' - Punch-In (with liveness check - currently auto-passes)")
+    print("  'o' - Punch-Out")
+    print("  's' - Show attendance summary")
+    print("  'l' - List registered faces")
+    print("  'q' - Quit")
     print("\nStarting camera...\n")
     
     # Initialize components
@@ -75,17 +51,26 @@ def main():
         detector = FaceDetector(min_detection_confidence=0.7)
         encoder = FaceEncoder()
         storage = FaceStorage()
+        matcher = FaceMatcher(threshold=8.0)  # Tightened threshold
+        attendance_logger = AttendanceLogger()
+        attendance_manager = AttendanceManager(attendance_logger)
+        liveness = LivenessDetector()
         
         print(f"✓ Face detector initialized")
         print(f"✓ Face encoder initialized (encoding dimension: {encoder.get_encoding_shape()})")
-        print(f"✓ Face storage initialized")
+        print(f"✓ Face matcher initialized (threshold: {matcher.threshold})")
+        print(f"✓ Liveness detector initialized")
+        print(f"✓ Attendance system initialized")
         print(f"✓ Currently registered: {storage.count()} face(s)\n")
         
         with Camera() as cam:
             print("✓ Camera opened successfully")
-            print("✓ Ready for registration...\n")
+            print("✓ System ready\n")
             
-            registration_mode = False
+            # Application state
+            mode = "idle"  # idle, register, punch_in, punch_out
+            liveness_active = False
+            last_recognition = None
             
             while True:
                 # Capture frame
@@ -97,24 +82,89 @@ def main():
                 
                 # Detect faces
                 faces = detector.detect(frame)
+                display_frame = detector.draw_detections(frame.copy(), faces)
                 
-                # Draw detections
-                frame = detector.draw_detections(frame, faces)
+                # Handle different modes
+                if mode == "idle":
+                    # Recognition mode - show names for recognized faces
+                    cv2.putText(display_frame, f"Registered: {storage.count()} | R:Register I:Punch-In O:Punch-Out", 
+                               (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                    
+                    if faces and storage.count() > 0:
+                        face = faces[0]
+                        bbox = face['bbox']
+                        x, y, w, h = bbox  # bbox is a tuple (x, y, w, h)
+                        encoding = encoder.encode(frame, bbox)
+                        
+                        if encoding is not None:
+                            # Match face
+                            result = matcher.match_face(encoding, storage.get_all_encodings(), storage.get_all_names())
+                            
+                            if result['matched']:
+                                name = result['name']
+                                confidence = result['confidence']
+                                status = attendance_manager.get_status(name)
+                                status_text = f" [{status.upper()}]" if status else ""
+                                
+                                # Display name and status
+                                cv2.putText(display_frame, f"{name}{status_text}", 
+                                           (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+                                cv2.putText(display_frame, f"Confidence: {confidence:.2f}", 
+                                           (x, y + h + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                                
+                                last_recognition = result
+                            else:
+                                cv2.putText(display_frame, "Unknown", 
+                                           (x, y - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+                                last_recognition = None
                 
-                # Display status
-                if registration_mode:
-                    cv2.putText(frame, "REGISTRATION MODE - Position your face", (10, 30),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-                else:
-                    cv2.putText(frame, f"Registered: {storage.count()} | Press 'r' to register", (10, 30),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-                
-                if faces:
-                    cv2.putText(frame, f"Face detected!", (10, 60),
-                               cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+                elif mode == "punch_in" and liveness_active:
+                    # Liveness check mode
+                    if faces:
+                        face = faces[0]
+                        bbox = face['bbox']
+                        
+                        result = liveness.verify_liveness(frame, bbox)
+                        
+                        # Display liveness status
+                        status_color = (0, 255, 255) if result['is_live'] is None else \
+                                      (0, 255, 0) if result['is_live'] else (0, 0, 255)
+                        
+                        cv2.putText(display_frame, result['message'], 
+                                   (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, status_color, 2)
+                        cv2.putText(display_frame, f"Time: {result['time_elapsed']:.1f}s", 
+                                   (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+                        
+                        # Check if liveness verification complete
+                        if result['is_live'] is True:
+                            # Liveness passed, perform punch-in
+                            if last_recognition and last_recognition['matched']:
+                                name = last_recognition['name']
+                                face_id = last_recognition['index']
+                                
+                                punch_result = attendance_manager.punch_in(name, face_id)
+                                print(f"\n{punch_result['message']}")
+                                
+                                # Visual feedback
+                                cv2.rectangle(display_frame, (0, 0), 
+                                            (display_frame.shape[1], display_frame.shape[0]),
+                                            (0, 255, 0) if punch_result['success'] else (0, 0, 255), 20)
+                            
+                            liveness_active = False
+                            mode = "idle"
+                            time.sleep(1)
+                        
+                        elif result['is_live'] is False:
+                            print(f"\n✗ Liveness check failed: {result['message']}")
+                            liveness_active = False
+                            mode = "idle"
+                            time.sleep(1)
+                    else:
+                        cv2.putText(display_frame, "No face detected", 
+                                   (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
                 
                 # Display frame
-                cv2.imshow('Face Attendance System - Registration', frame)
+                cv2.imshow('Face Attendance System', display_frame)
                 
                 # Handle key presses
                 key = cv2.waitKey(1) & 0xFF
@@ -123,8 +173,80 @@ def main():
                     print("\n✓ Exiting...")
                     break
                 
+                elif key == ord('i'):
+                    # Punch-In with liveness check
+                    if not faces:
+                        print("\n✗ No face detected! Please position your face in frame.")
+                        continue
+                    
+                    if storage.count() == 0:
+                        print("\n✗ No registered faces. Please register first (press 'r').")
+                        continue
+                    
+                    # First recognize the person
+                    face = faces[0]
+                    bbox = face['bbox']
+                    encoding = encoder.encode(frame, bbox)
+                    
+                    if encoding is not None:
+                        result = matcher.match_face(encoding, storage.get_all_encodings(), storage.get_all_names())
+                        
+                        if result['matched']:
+                            last_recognition = result
+                            print(f"\n🔍 Recognized: {result['name']} (confidence: {result['confidence']:.2f})")
+                            print("🔍 Starting liveness check - Please blink naturally...")
+                            
+                            liveness.reset()
+                            liveness_active = True
+                            mode = "punch_in"
+                        else:
+                            print("\n✗ Face not recognized. Please register first.")
+                    else:
+                        print("\n✗ Failed to encode face.")
+                
+                elif key == ord('o'):
+                    # Punch-Out (no liveness check needed for exit)
+                    if not faces:
+                        print("\n✗ No face detected! Please position your face in frame.")
+                        continue
+                    
+                    if storage.count() == 0:
+                        print("\n✗ No registered faces. Please register first (press 'r').")
+                        continue
+                    
+                    face = faces[0]
+                    bbox = face['bbox']
+                    encoding = encoder.encode(frame, bbox)
+                    
+                    if encoding is not None:
+                        result = matcher.match_face(encoding, storage.get_all_encodings(), storage.get_all_names())
+                        
+                        if result['matched']:
+                            name = result['name']
+                            face_id = result['index']
+                            
+                            punch_result = attendance_manager.punch_out(name, face_id)
+                            print(f"\n{punch_result['message']}")
+                            
+                            # Visual feedback
+                            if punch_result['success']:
+                                for _ in range(2):
+                                    cv2.rectangle(display_frame, (0, 0), 
+                                                (display_frame.shape[1], display_frame.shape[0]),
+                                                (0, 255, 0), 20)
+                                    cv2.imshow('Face Attendance System', display_frame)
+                                    cv2.waitKey(200)
+                        else:
+                            print("\n✗ Face not recognized.")
+                    else:
+                        print("\n✗ Failed to encode face.")
+                
+                elif key == ord('s'):
+                    # Show attendance summary
+                    attendance_manager.display_summary()
+                
                 elif key == ord('r'):
-                    # Start registration
+                    # Start multi-sample registration
                     if not faces:
                         print("✗ No face detected! Please position your face in frame.")
                         continue
@@ -134,44 +256,89 @@ def main():
                         continue
                     
                     print("\n" + "=" * 50)
-                    print("REGISTRATION")
+                    print("MULTI-SAMPLE REGISTRATION")
                     print("=" * 50)
                     
-                    # Get the face
-                    face = faces[0]
-                    bbox = face['bbox']
-                    
-                    # Generate encoding
-                    print("Capturing face...")
-                    encoding = encoder.encode(frame, bbox)
-                    
-                    if encoding is None:
-                        print("✗ Failed to encode face. Please try again.")
-                        continue
-                    
-                    print(f"✓ Face captured successfully")
-                    print(f"  Encoding shape: {encoding.shape}")
-                    
-                    # Get name from user
+                    # Get name first
                     cv2.destroyAllWindows()  # Close window temporarily for input
                     name = input("\nEnter person's name: ").strip()
                     
                     if not name:
                         print("✗ Name cannot be empty. Registration cancelled.")
-                        cv2.namedWindow('Face Attendance System - Registration')
+                        cv2.namedWindow('Face Attendance System')
                         continue
                     
-                    # Save to storage
-                    face_id = storage.register_face(name, encoding)
+                    # Capture multiple samples
+                    print(f"\nCapturing multiple samples for {name}...")
+                    print("Please keep your face in frame and move slightly (different angles)")
+                    print("Press 'q' to cancel\n")
                     
-                    print(f"✓ Face registered successfully!")
-                    print(f"  Name: {name}")
-                    print(f"  ID: {face_id}")
-                    print(f"  Total registered: {storage.count()}")
+                    samples = []
+                    num_samples = 7  # Capture 7 frames
+                    frame_interval = 8  # Capture every 8th frame for variety
+                    frame_count = 0
+                    
+                    while len(samples) < num_samples:
+                        success, sample_frame = cam.read_frame()
+                        if not success:
+                            break
+                        
+                        # Detect faces in current frame
+                        sample_faces = detector.detect(sample_frame)
+                        
+                        # Draw detections
+                        display_frame = detector.draw_detections(sample_frame.copy(), sample_faces)
+                        
+                        # Display progress
+                        progress_text = f"Capturing: {len(samples)}/{num_samples} samples"
+                        cv2.putText(display_frame, progress_text, (10, 30),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.9, (0, 255, 0), 2)
+                        cv2.putText(display_frame, "Move your head slightly", (10, 70),
+                                  cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+                        
+                        # Capture sample if face detected and at interval
+                        if sample_faces and frame_count % frame_interval == 0:
+                            bbox = sample_faces[0]['bbox']
+                            encoding = encoder.encode(sample_frame, bbox)
+                            
+                            if encoding is not None:
+                                samples.append(encoding)
+                                print(f"✓ Sample {len(samples)}/{num_samples} captured")
+                                # Visual feedback - flash green
+                                cv2.rectangle(display_frame, (0, 0), (display_frame.shape[1], display_frame.shape[0]),
+                                            (0, 255, 0), 10)
+                        elif not sample_faces:
+                            cv2.putText(display_frame, "No face detected!", (10, 110),
+                                      cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                        
+                        cv2.imshow('Face Attendance System', display_frame)
+                        frame_count += 1
+                        
+                        # Allow cancellation
+                        if cv2.waitKey(30) & 0xFF == ord('q'):
+                            print("\n✗ Registration cancelled by user")
+                            break
+                    
+                    # Check if we got enough samples
+                    if len(samples) >= num_samples:
+                        # Average all encodings for robust representation
+                        avg_encoding = np.mean(samples, axis=0)
+                        
+                        # Register with averaged encoding
+                        face_id = storage.register_face(name, avg_encoding)
+                        print(f"\n✓ Successfully registered {name} with ID {face_id}")
+                        print(f"  Used {len(samples)} sample frames (averaged)")
+                        print(f"  Total registered faces: {storage.count()}")
+                    else:
+                        print(f"\n✗ Registration incomplete - only captured {len(samples)}/{num_samples} samples")
+                    
+                    print("\nPress any key to continue...")
+                    cv2.waitKey(2000)  # Show message for 2 seconds
                     print("=" * 50 + "\n")
                     
                     # Reopen window
-                    cv2.namedWindow('Face Attendance System - Registration')
+                    cv2.namedWindow('Face Attendance System')
+                    mode = "idle"
                 
                 elif key == ord('l'):
                     # List all registered faces

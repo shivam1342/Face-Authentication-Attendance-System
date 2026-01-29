@@ -1,0 +1,20 @@
+[
+  {
+    "name": "shivam",
+    "face_id": 0,
+    "type": "punch_in",
+    "timestamp": "2026-01-29T11:45:51.931466",
+    "date": "2026-01-29",
+    "time": "11:45:51"
+  },
+  {
+    "name": "shivam",
+    "face_id": 0,
+    "type": "punch_out",
+    "timestamp": "2026-01-29T11:46:02.532394",
+    "date": "2026-01-29",
+    "time": "11:46:02",
+    "duration_hours": 0.0,
+    "duration_str": "0:00:10"
+  }
+]
