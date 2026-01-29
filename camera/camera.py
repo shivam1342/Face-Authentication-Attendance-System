@@ -1,19 +1,19 @@
 """
-Camera abstraction module for webcam capture.
-Handles opening, capturing, and releasing the camera.
+Handles webcam initialization and frame capture.
+Abstracts camera access so the rest of the system remains independent of the video source.
 """
 import cv2
 
 
 class Camera:
-    """Simple webcam abstraction for frame capture."""
+    """Webcam abstraction for frame capture."""
     
-    def __init__(self, camera_index=0):
+    def __init__(self, camera_index=1):
         """
         Initialize camera.
         
         Args:
-            camera_index (int): Camera device index (default: 0 for primary webcam)
+            camera_index: Camera device index (0 for default webcam)
         """
         self.camera_index = camera_index
         self.cap = None
@@ -27,10 +27,10 @@ class Camera:
     
     def read_frame(self):
         """
-        Capture a single frame from the camera.
+        Capture a frame from camera.
         
         Returns:
-            tuple: (success, frame) where success is bool and frame is numpy array
+            tuple: (success, frame)
         """
         if self.cap is None or not self.cap.isOpened():
             return False, None
@@ -38,12 +38,8 @@ class Camera:
         success, frame = self.cap.read()
         return success, frame
     
-    def is_opened(self):
-        """Check if camera is opened."""
-        return self.cap is not None and self.cap.isOpened()
-    
     def release(self):
-        """Release the camera resource."""
+        """Release camera resource."""
         if self.cap is not None:
             self.cap.release()
             self.cap = None

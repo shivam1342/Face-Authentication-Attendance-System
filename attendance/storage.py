@@ -188,18 +188,18 @@ class AttendanceLogger:
         """
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Check if already punched in today
-        status = self.get_status_today(name)
+        # Check if already punched in within last 10 seconds
+        status = self.get_status_recent(name)
         if status == 'in':
             return {
                 'success': False,
-                'message': f'{name} already punched in today',
+                'message': f'{name} already punched in (wait 10s)',
                 'type': 'duplicate'
             }
         elif status == 'out':
             return {
                 'success': False,
-                'message': f'{name} already completed attendance (punched out)',
+                'message': f'{name} already completed attendance (wait 10s)',
                 'type': 'already_completed'
             }
         
@@ -234,7 +234,7 @@ class AttendanceLogger:
         """
         today = datetime.now().strftime('%Y-%m-%d')
         
-        # Check if punched in today
+        # Check current status (can punch out anytime after punch-in)
         status = self.get_status_today(name)
         if status is None:
             return {
@@ -243,11 +243,14 @@ class AttendanceLogger:
                 'type': 'not_punched_in'
             }
         elif status == 'out':
-            return {
-                'success': False,
-                'message': f'{name} already punched out today',
-                'type': 'duplicate'
-            }
+            # Check if punch-out was recent (within 10 seconds)
+            recent_status = self.get_status_recent(name)
+            if recent_status == 'out':
+                return {
+                    'success': False,
+                    'message': f'{name} already punched out (wait 10s)',
+                    'type': 'duplicate'
+                }
         
         # Get punch-in time for duration calculation
         punch_in_entry = self._get_last_punch_in_today(name)
@@ -284,6 +287,38 @@ class AttendanceLogger:
             'entry': entry
         }
     
+    def get_status_recent(self, name):
+        """
+        Get current punch status for a person within last 10 seconds.
+        
+        Args:
+            name (str): Person's name
+            
+        Returns:
+            str or None: 'in' if punched in, 'out' if punched out, None if no activity
+        """
+        now = datetime.now()
+        
+        # Find the last entry for this person within last 10 seconds
+        last_entry = None
+        for log in reversed(self.logs):
+            if log.get('name') == name:
+                log_time = datetime.fromisoformat(log.get('timestamp'))
+                time_diff = (now - log_time).total_seconds()
+                if time_diff <= 10:
+                    last_entry = log
+                    break
+        
+        if last_entry is None:
+            return None
+        
+        if last_entry.get('type') == 'punch_in':
+            return 'in'
+        elif last_entry.get('type') == 'punch_out':
+            return 'out'
+        
+        return None
+    
     def get_status_today(self, name):
         """
         Get current punch status for a person today.
@@ -310,6 +345,19 @@ class AttendanceLogger:
             return 'in'
         elif last_entry.get('type') == 'punch_out':
             return 'out'
+        
+        return None
+    
+    def _get_last_punch_in_recent(self, name):
+        """Get the last punch-in entry for a person within last 10 seconds."""
+        now = datetime.now()
+        
+        for log in reversed(self.logs):
+            if log.get('name') == name and log.get('type') == 'punch_in':
+                log_time = datetime.fromisoformat(log.get('timestamp'))
+                time_diff = (now - log_time).total_seconds()
+                if time_diff <= 10:
+                    return log
         
         return None
     

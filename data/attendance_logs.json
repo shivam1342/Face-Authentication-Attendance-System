@@ -3,18 +3,72 @@
     "name": "shivam",
     "face_id": 0,
     "type": "punch_in",
-    "timestamp": "2026-01-29T11:45:51.931466",
+    "timestamp": "2026-01-29T17:53:11.290680",
     "date": "2026-01-29",
-    "time": "11:45:51"
+    "time": "17:53:11"
   },
   {
     "name": "shivam",
     "face_id": 0,
     "type": "punch_out",
-    "timestamp": "2026-01-29T11:46:02.532394",
+    "timestamp": "2026-01-29T17:54:58.252290",
     "date": "2026-01-29",
-    "time": "11:46:02",
+    "time": "17:54:58",
+    "duration_hours": 0.03,
+    "duration_str": "0:01:46"
+  },
+  {
+    "name": "shivam",
+    "face_id": 0,
+    "type": "punch_in",
+    "timestamp": "2026-01-29T17:55:29.876088",
+    "date": "2026-01-29",
+    "time": "17:55:29"
+  },
+  {
+    "name": "shivam",
+    "face_id": 0,
+    "type": "punch_out",
+    "timestamp": "2026-01-29T17:55:48.821222",
+    "date": "2026-01-29",
+    "time": "17:55:48",
+    "duration_hours": 0.01,
+    "duration_str": "0:00:18"
+  },
+  {
+    "name": "shivam",
+    "face_id": 0,
+    "type": "punch_in",
+    "timestamp": "2026-01-29T17:56:01.487839",
+    "date": "2026-01-29",
+    "time": "17:56:01"
+  },
+  {
+    "name": "shivam",
+    "face_id": 0,
+    "type": "punch_out",
+    "timestamp": "2026-01-29T17:56:10.554468",
+    "date": "2026-01-29",
+    "time": "17:56:10",
     "duration_hours": 0.0,
-    "duration_str": "0:00:10"
+    "duration_str": "0:00:09"
+  },
+  {
+    "name": "aryan",
+    "face_id": 1,
+    "type": "punch_in",
+    "timestamp": "2026-01-29T17:59:21.274844",
+    "date": "2026-01-29",
+    "time": "17:59:21"
+  },
+  {
+    "name": "shivam",
+    "face_id": 0,
+    "type": "punch_out",
+    "timestamp": "2026-01-29T17:59:37.943100",
+    "date": "2026-01-29",
+    "time": "17:59:37",
+    "duration_hours": 0.06,
+    "duration_str": "0:03:36"
   }
 ]

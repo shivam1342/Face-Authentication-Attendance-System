@@ -16,6 +16,9 @@ build/
 dist/
 *.egg-info/
 
+IMPROVEMENTS.md
+LIVENESS_DETECTION.md
+study.md
 # IDE
 .vscode/
 .idea/

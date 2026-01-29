@@ -1,103 +1,65 @@
 """
-Face encoding module using face landmarks.
-Converts face images to embedding vectors for recognition.
+Extracts a compact face representation from detected face regions.
+Used during both registration and identification to ensure consistent face matching.
 """
 import cv2
 import numpy as np
 
 
 class FaceEncoder:
-    """Face encoder using OpenCV and geometric features."""
+    """Face encoder using histogram and spatial features."""
     
     def __init__(self):
         """Initialize face encoder."""
-        # Load face landmark detector (68 points)
-        landmark_model = cv2.data.haarcascades + "haarcascade_eye.xml"
-        self.eye_cascade = cv2.CascadeClassifier(landmark_model)
+        pass
     
-    def encode(self, frame, bbox=None):
+    def encode(self, frame, bbox):
         """
         Generate face embedding from frame.
         
         Args:
-            frame (numpy.ndarray): BGR image frame
-            bbox (tuple): Optional bounding box (x, y, w, h) to crop face region
+            frame: BGR image frame
+            bbox: Bounding box (x, y, w, h) of face region
             
         Returns:
-            numpy.ndarray: Face embedding vector (simplified 128-dimension)
-                          or None if encoding fails
+            numpy.ndarray: 128-dimensional face encoding vector
         """
-        # If bbox provided, crop to face region
-        if bbox is not None:
-            x, y, w, h = bbox
-            # Ensure coordinates are within bounds
-            x, y = max(0, x), max(0, y)
-            h_max, w_max = frame.shape[:2]
-            face_region = frame[y:min(y+h, h_max), x:min(x+w, w_max)]
-        else:
-            face_region = frame
+        x, y, w, h = bbox
+        
+        # Ensure coordinates are within bounds
+        x, y = max(0, x), max(0, y)
+        h_max, w_max = frame.shape[:2]
+        face_region = frame[y:min(y+h, h_max), x:min(x+w, w_max)]
         
         if face_region.size == 0:
             return None
         
-        # Resize face to standard size for consistent encoding
+        # Resize to standard size
         face_resized = cv2.resize(face_region, (128, 128))
         
         # Convert to grayscale
         gray = cv2.cvtColor(face_resized, cv2.COLOR_BGR2GRAY)
         
-        # Apply histogram equalization for better consistency
+        # Histogram equalization
         gray = cv2.equalizeHist(gray)
         
-        # Extract features using multiple methods
+        # Extract features
         features = []
         
-        # 1. Histogram features (64 values)
+        # Histogram features (64 bins)
         hist = cv2.calcHist([gray], [0], None, [64], [0, 256])
-        hist = hist.flatten() / hist.sum()  # Normalize
+        hist = hist.flatten() / hist.sum()
         features.extend(hist)
         
-        # 2. LBP-like features (64 values)
-        # Divide face into 8x8 grid and compute mean intensity
+        # Spatial features (8x8 grid = 64 values)
         for i in range(8):
             for j in range(8):
                 block = gray[i*16:(i+1)*16, j*16:(j+1)*16]
                 features.append(block.mean() / 255.0)
         
-        # Convert to numpy array
         encoding = np.array(features, dtype=np.float32)
-        
         return encoding
-    
-    def encode_multiple(self, frame, bboxes):
-        """
-        Encode multiple faces from frame.
-        
-        Args:
-            frame (numpy.ndarray): BGR image frame
-            bboxes (list): List of bounding boxes [(x, y, w, h), ...]
-            
-        Returns:
-            list: List of encodings (one per face)
-        """
-        encodings = []
-        for bbox in bboxes:
-            encoding = self.encode(frame, bbox)
-            encodings.append(encoding)
-        return encodings
-    
-    def get_encoding_shape(self):
-        """
-        Get the shape of encoding vector.
-        
-        Returns:
-            int: Dimension of encoding (128 dimensions)
-        """
-        return 128  # 64 histogram + 64 spatial features
-    
-    def close(self):
-        """Release resources."""
-        pass  # No resources to release
+
 
 
 def calculate_similarity(encoding1, encoding2):
